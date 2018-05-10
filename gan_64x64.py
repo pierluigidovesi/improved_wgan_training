@@ -634,10 +634,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             clip_ops.append(tf.assign(var, tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])))
         clip_disc_weights = tf.group(*clip_ops)
 
-	# ACTIVE NOW
+    # ACTIVE NOW
     elif MODE == 'wgan-gp':
 
-	    # classic adam
+        # classic adam
         gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9).minimize(gen_cost,
                                                                                                 var_list=lib.params_with_name(
                                                                                                     'Generator'),
@@ -646,7 +646,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                                                                                                  var_list=lib.params_with_name(
                                                                                                      'Discriminator.'),
                                                                                                  colocate_gradients_with_ops=True)
-	# adam
+    # adam
     elif MODE == 'dcgan':
         gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost,
                                                                                       var_list=lib.params_with_name(
@@ -656,7 +656,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                                                                                        var_list=lib.params_with_name(
                                                                                            'Discriminator.'),
                                                                                        colocate_gradients_with_ops=True)
-	# RMSProp
+    # RMSProp
     elif MODE == 'lsgan':
         gen_train_op = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(gen_cost,
                                                                               var_list=lib.params_with_name(
@@ -670,7 +670,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     else:
         raise Exception()
 
-
     # For generating samples
 
     # gen fixed_noise as nrandom matrix rows: BATCH_SIZE * columns: 128
@@ -679,10 +678,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     all_fixed_noise_samples = []
     # FOR each device
     for device_index, device in enumerate(DEVICES):
-	    # dim of partial batch
+        # dim of partial batch
         n_samples = BATCH_SIZE / len(DEVICES)
 
-	    # append Generator samples give every time part of random fixed noise
+        # append Generator samples give every time part of random fixed noise
         all_fixed_noise_samples.append(
             Generator(n_samples, noise=fixed_noise[device_index * n_samples:(device_index + 1) * n_samples]))
 
@@ -692,10 +691,14 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     else:
         all_fixed_noise_samples = tf.concat(0, all_fixed_noise_samples)
 
-	# function image generation
+    # function image generation
+
+
     def generate_image(iteration):
         samples = session.run(all_fixed_noise_samples)
+        # set images from -1,1 -> 0,2 -> 0,255
         samples = ((samples + 1.) * (255.99 / 2)).astype('int32')
+        # reshape and save images
         lib.save_images.save_images(samples.reshape((BATCH_SIZE, 3, 64, 64)), 'samples_{}.png'.format(iteration))
 
 
