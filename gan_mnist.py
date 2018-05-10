@@ -116,8 +116,8 @@ def Generator(n_samples, noise=None):
 
 def Discriminator(inputs):
     # input = n_samples x 28*28 ---> n_samples x 1 x 28 x 28
-    output = tf.reshape(inputs, [-1, 1, 28, 28])
-    #output = tf.reshape(inputs, [-1, 28, 28, 1])
+    #output = tf.reshape(inputs, [-1, 1, 28, 28])
+    output = tf.reshape(inputs, [-1, 28, 28, 1])
 
     ########################## LAYER 1: Conv2 + LeakyReLu ##############################
     # input = n_samples x 1 x 28 x 28 ---> n_samples x  DIM (64) x 28 x 28
