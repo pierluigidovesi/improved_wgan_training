@@ -19,24 +19,26 @@ import tflib.save_images
 import tflib.mnist
 import tflib.plot
 
-MODE = 'wgan-gp' # dcgan, wgan, or wgan-gp
-DIM = 64 # Model dimensionality
-BATCH_SIZE = 50 # Batch size
-CRITIC_ITERS = 5 # For WGAN and WGAN-GP, number of critic iters per gen iter
-LAMBDA = 10 # Gradient penalty lambda hyperparameter
-ITERS = 200000 # How many generator iterations to train for 
-OUTPUT_DIM = 784 # Number of pixels in MNIST (28*28)
+MODE         = 'wgan-gp'  # dcgan, wgan, or wgan-gp
+DIM          = 64         # Model dimensionality
+BATCH_SIZE   = 50         # Batch size
+CRITIC_ITERS = 5          # For WGAN and WGAN-GP, number of critic iters per gen iter
+LAMBDA       = 10         # Gradient penalty lambda hyperparameter
+ITERS        = 200000     # How many generator iterations to train for
+OUTPUT_DIM   = 784        # Number of pixels in MNIST (28*28)
 
 lib.print_model_settings(locals().copy())
 
+# ----------------------------------------------------------------------------------------
+# LAYERS
 def LeakyReLU(x, alpha=0.2):
     return tf.maximum(alpha*x, x)
 
 def ReLULayer(name, n_in, n_out, inputs):
     output = lib.ops.linear.Linear(
-        name+'.Linear', 
-        n_in, 
-        n_out, 
+        name+'.Linear',
+        n_in,
+        n_out,
         inputs,
         initialization='he'
     )
@@ -44,75 +46,128 @@ def ReLULayer(name, n_in, n_out, inputs):
 
 def LeakyReLULayer(name, n_in, n_out, inputs):
     output = lib.ops.linear.Linear(
-        name+'.Linear', 
-        n_in, 
-        n_out, 
+        name+'.Linear',
+        n_in,
+        n_out,
         inputs,
         initialization='he'
     )
     return LeakyReLU(output)
 
+# ----------------------------------------------------------------------------------
+# GENERATOR
 def Generator(n_samples, noise=None):
+
+    # if no noise -> randn noise
     if noise is None:
         noise = tf.random_normal([n_samples, 128])
 
-    output = lib.ops.linear.Linear('Generator.Input', 128, 4*4*4*DIM, noise)
+    ########################## LAYER 1: Linear + Relu ###############################
+    # define a linear layer
+    # input = n_samples x 128 ----> n_samples x 4*4*4*64
+    output = lib.ops.linear.Linear(name='Generator.Input', input_dim=128, output_dim=4*4*4*DIM, inputs=noise)
+
+    # if wgan -> batchnorm
     if MODE == 'wgan':
         output = lib.ops.batchnorm.Batchnorm('Generator.BN1', [0], output)
+
+    # Relu
     output = tf.nn.relu(output)
+
+    # TODO reshape relu
+    # reshape n_samples x 4*4*4*64 ---> n_samples x 4*64 x 4 x 4
     output = tf.reshape(output, [-1, 4*DIM, 4, 4])
 
-    output = lib.ops.deconv2d.Deconv2D('Generator.2', 4*DIM, 2*DIM, 5, output)
+    ########################## LAYER 2: Deconv2D + Relu ##############################
+    # deconv2D
+    # input = n_samples x 4*64 x 4 x 4 ---> n_samples x 2*64 x 8 x 8
+    output = lib.ops.deconv2d.Deconv2D('Generator.2', input_dim=4*DIM, output_dim=2*DIM, filter_size=5, inputs=output)
+
+    # if wgan -> batchnorm
     if MODE == 'wgan':
         output = lib.ops.batchnorm.Batchnorm('Generator.BN2', [0,2,3], output)
+    # ReLu
     output = tf.nn.relu(output)
-
+    # TODO remove padding?
     output = output[:,:,:7,:7]
 
+    ########################## LAYER 3: Deconv2D + Relu ##############################
+    # input = n_samples x 2*64 x 7 x 7 ---> n_samples x 64 x 14 x 14
+    # deconv2D
     output = lib.ops.deconv2d.Deconv2D('Generator.3', 2*DIM, DIM, 5, output)
+
+    # if wgan -> batchnorm
     if MODE == 'wgan':
         output = lib.ops.batchnorm.Batchnorm('Generator.BN3', [0,2,3], output)
+    # ReLu
     output = tf.nn.relu(output)
 
+    ########################## LAYER 4: Deconv2D + sigmoid ##############################
+    # input = n_samples x 64 x 14 x 14 ---> n_samples x 1 x 28 x 28
+    # deconv2D
     output = lib.ops.deconv2d.Deconv2D('Generator.5', DIM, 1, 5, output)
+    # sigmoid
     output = tf.nn.sigmoid(output)
 
+    # input = n_samples x 1 x 28 x 28 ---> n_samples x 28*28 = 784
     return tf.reshape(output, [-1, OUTPUT_DIM])
 
+
+
 def Discriminator(inputs):
+    # input = n_samples x 28*28 ---> n_samples x 1 x 28 x 28
     output = tf.reshape(inputs, [-1, 1, 28, 28])
 
-    output = lib.ops.conv2d.Conv2D('Discriminator.1',1,DIM,5,output,stride=2)
+    ########################## LAYER 1: Conv2 + LeakyReLu ##############################
+    # input = n_samples x 1 x 28 x 28 ---> n_samples x  DIM (64) x 28 x 28
+    output = lib.ops.conv2d.Conv2D('Discriminator.1', input_dim=1, output_dim=DIM, filter_size=5, inputs=output, stride=2)
     output = LeakyReLU(output)
 
+    ########################## LAYER 2: Conv2 + LeakyReLU ##############################
+    # input = n_samples x DIM (64) x 28 x 28 ---> n_samples x 2*DIM X 28 x 28
     output = lib.ops.conv2d.Conv2D('Discriminator.2', DIM, 2*DIM, 5, output, stride=2)
     if MODE == 'wgan':
         output = lib.ops.batchnorm.Batchnorm('Discriminator.BN2', [0,2,3], output)
     output = LeakyReLU(output)
 
+    ########################## LAYER 3: Conv2 + LeakyReLU ##############################
+    # input = n_samples x 2*DIM (64) x 28 x 28 ---> n_samples x 4*DIM x 28 x 28
     output = lib.ops.conv2d.Conv2D('Discriminator.3', 2*DIM, 4*DIM, 5, output, stride=2)
     if MODE == 'wgan':
         output = lib.ops.batchnorm.Batchnorm('Discriminator.BN3', [0,2,3], output)
     output = LeakyReLU(output)
 
+    ########################## LAYER 2: Conv2 + Linear ##############################
+    # input = n_samples x 4*DIM x 28 x 28 ---> n_samples x 4*4*4*DIM
     output = tf.reshape(output, [-1, 4*4*4*DIM])
-    output = lib.ops.linear.Linear('Discriminator.Output', 4*4*4*DIM, 1, output)
+
+    output = lib.ops.linear.Linear('Discriminator.Output', input_dim=4*4*4*DIM, output_dim=1, output)
 
     return tf.reshape(output, [-1])
 
+# --------------------------------------------------------------------------------------
+# MAIN
+
+# placeholders
 real_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE, OUTPUT_DIM])
+# generate samples (just build)
 fake_data = Generator(BATCH_SIZE)
 
+# evaluate real and fake images
 disc_real = Discriminator(real_data)
 disc_fake = Discriminator(fake_data)
 
+# define parameters with names
 gen_params = lib.params_with_name('Generator')
 disc_params = lib.params_with_name('Discriminator')
 
+# mode for COST and OPTIMIZERS
 if MODE == 'wgan':
+    # def costs
     gen_cost = -tf.reduce_mean(disc_fake)
     disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
 
+    # RMSPropOptim
     gen_train_op = tf.train.RMSPropOptimizer(
         learning_rate=5e-5
     ).minimize(gen_cost, var_list=gen_params)
@@ -120,26 +175,30 @@ if MODE == 'wgan':
         learning_rate=5e-5
     ).minimize(disc_cost, var_list=disc_params)
 
+    # weights clipping
     clip_ops = []
     for var in lib.params_with_name('Discriminator'):
         clip_bounds = [-.01, .01]
         clip_ops.append(
             tf.assign(
-                var, 
+                var,
                 tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])
             )
         )
     clip_disc_weights = tf.group(*clip_ops)
 
 elif MODE == 'wgan-gp':
+    # def costs (as usual)
     gen_cost = -tf.reduce_mean(disc_fake)
     disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
 
+    # def nrand alpha
     alpha = tf.random_uniform(
-        shape=[BATCH_SIZE,1], 
+        shape=[BATCH_SIZE,1],
         minval=0.,
         maxval=1.
     )
+    # get gradient_penalty
     differences = fake_data - real_data
     interpolates = real_data + (alpha*differences)
     gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
@@ -147,57 +206,66 @@ elif MODE == 'wgan-gp':
     gradient_penalty = tf.reduce_mean((slopes-1.)**2)
     disc_cost += LAMBDA*gradient_penalty
 
+    # Adam optimizer
     gen_train_op = tf.train.AdamOptimizer(
-        learning_rate=1e-4, 
+        learning_rate=1e-4,
         beta1=0.5,
         beta2=0.9
     ).minimize(gen_cost, var_list=gen_params)
     disc_train_op = tf.train.AdamOptimizer(
-        learning_rate=1e-4, 
-        beta1=0.5, 
+        learning_rate=1e-4,
+        beta1=0.5,
         beta2=0.9
     ).minimize(disc_cost, var_list=disc_params)
 
     clip_disc_weights = None
 
 elif MODE == 'dcgan':
+
+    # def cost with cross_entropy
     gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-        disc_fake, 
+        disc_fake,
         tf.ones_like(disc_fake)
     ))
 
     disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-        disc_fake, 
+        disc_fake,
         tf.zeros_like(disc_fake)
     ))
     disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-        disc_real, 
+        disc_real,
         tf.ones_like(disc_real)
     ))
     disc_cost /= 2.
 
+    # Adam
     gen_train_op = tf.train.AdamOptimizer(
-        learning_rate=2e-4, 
+        learning_rate=2e-4,
         beta1=0.5
     ).minimize(gen_cost, var_list=gen_params)
     disc_train_op = tf.train.AdamOptimizer(
-        learning_rate=2e-4, 
+        learning_rate=2e-4,
         beta1=0.5
     ).minimize(disc_cost, var_list=disc_params)
 
     clip_disc_weights = None
 
 # For saving samples
+
+# gen nrand noise
 fixed_noise = tf.constant(np.random.normal(size=(128, 128)).astype('float32'))
+# take samples from Generator from noise
 fixed_noise_samples = Generator(128, noise=fixed_noise)
+# save images
 def generate_image(frame, true_dist):
     samples = session.run(fixed_noise_samples)
     lib.save_images.save_images(
-        samples.reshape((128, 28, 28)), 
+        samples.reshape((128, 28, 28)),
         'samples_{}.png'.format(frame)
     )
 
 # Dataset iterator
+# TODO YIELD TO CHECK
 train_gen, dev_gen, test_gen = lib.mnist.load(BATCH_SIZE, BATCH_SIZE)
 def inf_train_gen():
     while True:
@@ -211,12 +279,17 @@ with tf.Session() as session:
 
     gen = inf_train_gen()
 
+    # ------------------------------------------------------------------
+    # TRAIN EPOCHS
     for iteration in xrange(ITERS):
+
         start_time = time.time()
 
         if iteration > 0:
             _ = session.run(gen_train_op)
 
+        # --------------------------------------------------------------
+        # TRAINING NETS
         if MODE == 'dcgan':
             disc_iters = 1
         else:
@@ -230,6 +303,8 @@ with tf.Session() as session:
             if clip_disc_weights is not None:
                 _ = session.run(clip_disc_weights)
 
+        # --------------------------------------------------------------
+        # PLOTS and LOGS
         lib.plot.plot('train disc cost', _disc_cost)
         lib.plot.plot('time', time.time() - start_time)
 
@@ -238,7 +313,7 @@ with tf.Session() as session:
             dev_disc_costs = []
             for images,_ in dev_gen():
                 _dev_disc_cost = session.run(
-                    disc_cost, 
+                    disc_cost,
                     feed_dict={real_data: images}
                 )
                 dev_disc_costs.append(_dev_disc_cost)

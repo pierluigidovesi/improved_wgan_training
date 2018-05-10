@@ -691,8 +691,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     else:
         all_fixed_noise_samples = tf.concat(0, all_fixed_noise_samples)
 
-    # function image generation
 
+    # function image generation
 
     def generate_image(iteration):
         samples = session.run(all_fixed_noise_samples)
@@ -705,7 +705,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     # Dataset iterator
     train_gen, dev_gen = lib.small_imagenet.load(BATCH_SIZE, data_dir=DATA_DIR)
 
-
+    # TODO understand YIELD
     def inf_train_gen():
         while True:
             for (images,) in train_gen():
@@ -716,26 +716,32 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     _x = inf_train_gen().next()
     _x_r = session.run(real_data, feed_dict={real_data_conv: _x[:BATCH_SIZE / N_GPUS]})
     _x_r = ((_x_r + 1.) * (255.99 / 2)).astype('int32')
+    # save ral images
     lib.save_images.save_images(_x_r.reshape((BATCH_SIZE / N_GPUS, 3, 64, 64)), 'samples_groundtruth.png')
 
     # Train loop
     session.run(tf.initialize_all_variables())
     gen = inf_train_gen()
+
+    # START TRAINING
+    # iter EPOCHS
     for iteration in xrange(ITERS):
 
         start_time = time.time()
 
         # Train generator
         if iteration > 0:
+            # train gen with optimizer
             _ = session.run(gen_train_op)
 
         # Train critic
         if (MODE == 'dcgan') or (MODE == 'lsgan'):
             disc_iters = 1
         else:
-            disc_iters = CRITIC_ITERS
+            disc_iters = CRITIC_ITERS #5
         for i in xrange(disc_iters):
             _data = gen.next()
+            # train discriminator with cost and optimizer
             _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={all_real_data_conv: _data})
             if MODE == 'wgan':
                 _ = session.run([clip_disc_weights])
