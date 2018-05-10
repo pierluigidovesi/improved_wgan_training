@@ -24,7 +24,7 @@ DIM          = 64         # Model dimensionality
 BATCH_SIZE   = 50         # Batch size
 CRITIC_ITERS = 5          # For WGAN and WGAN-GP, number of critic iters per gen iter
 LAMBDA       = 10         # Gradient penalty lambda hyperparameter
-ITERS        = 200000     # How many generator iterations to train for
+ITERS        = 2000     # How many generator iterations to train for
 OUTPUT_DIM   = 784        # Number of pixels in MNIST (28*28)
 
 lib.print_model_settings(locals().copy())
@@ -116,7 +116,8 @@ def Generator(n_samples, noise=None):
 
 def Discriminator(inputs):
     # input = n_samples x 28*28 ---> n_samples x 1 x 28 x 28
-    output = tf.reshape(inputs, [-1, 1, 28, 28])
+    #output = tf.reshape(inputs, [-1, 1, 28, 28])
+    output = tf.reshape(inputs, [-1, 28, 28, 1])
 
     ########################## LAYER 1: Conv2 + LeakyReLu ##############################
     # input = n_samples x 1 x 28 x 28 ---> n_samples x  DIM (64) x 28 x 28
