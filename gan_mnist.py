@@ -81,7 +81,7 @@ def Generator(n_samples, noise=None):
     ########################## LAYER 2: Deconv2D + Relu ##############################
     # deconv2D
     # input = n_samples x 4*64 x 4 x 4 ---> n_samples x 2*64 x 8 x 8
-    output = lib.ops.deconv2d.Deconv2D('Generator.2', input_dim=4*DIM, output_dim=2*DIM, filter_size=5, inputs=output)
+    output = lib.ops.deconv2d.Deconv2D('Generator.2', 4*DIM, 2*DIM, 5, output)
 
     # if wgan -> batchnorm
     if MODE == 'wgan':
@@ -120,7 +120,7 @@ def Discriminator(inputs):
 
     ########################## LAYER 1: Conv2 + LeakyReLu ##############################
     # input = n_samples x 1 x 28 x 28 ---> n_samples x  DIM (64) x 28 x 28
-    output = lib.ops.conv2d.Conv2D('Discriminator.1', input_dim=1, output_dim=DIM, filter_size=5, inputs=output, stride=2)
+    output = lib.ops.conv2d.Conv2D(name='Discriminator.1', input_dim=1, output_dim=DIM, filter_size=5, inputs=output, stride=2)
     output = LeakyReLU(output)
 
     ########################## LAYER 2: Conv2 + LeakyReLU ##############################
@@ -141,7 +141,7 @@ def Discriminator(inputs):
     # input = n_samples x 4*DIM x 28 x 28 ---> n_samples x 4*4*4*DIM
     output = tf.reshape(output, [-1, 4*4*4*DIM])
 
-    output = lib.ops.linear.Linear('Discriminator.Output', input_dim=4*4*4*DIM, output_dim=1, output)
+    output = lib.ops.linear.Linear('Discriminator.Output', 4*4*4*DIM, 1, output)
 
     return tf.reshape(output, [-1])
 
